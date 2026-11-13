@@ -1,7 +1,7 @@
-import { test, describe, beforeEach, afterEach } from 'vitest';
+import { test, describe, beforeEach, afterEach, vi } from 'vitest';
 import assert from 'node:assert';
 import { Account, Asset, Keypair, Networks, Operation, TransactionBuilder } from '@stellar/stellar-sdk';
-import { BASE_FEE_STROOPS, createStellarAccount, getSuggestedFee, sendXLM, submitTransaction } from '@/src/utils/stellar';
+import { BASE_FEE_STROOPS, createStellarAccount, getAccountBalance, getSuggestedFee, sendXLM, submitTransaction } from '@/src/utils/stellar';
 
 interface CapturedRequest {
   url: string;
@@ -27,6 +27,50 @@ function createMockResponse(body: unknown, ok = true, status = 200): Response {
     formData: async () => new FormData(),
   } as Response;
 }
+
+describe('Horizon request hardening', () => {
+  const originalFetch = globalThis.fetch;
+  const originalError = console.error;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    console.error = originalError;
+    vi.useRealTimers();
+  });
+
+  test('aborts a hung request after ten seconds', async () => {
+    vi.useFakeTimers();
+    console.error = () => {};
+    let aborted = false;
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (!init?.signal) throw new Error('Horizon fetch has no abort signal');
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          aborted = true;
+          reject(new DOMException('aborted', 'AbortError'));
+        }, { once: true });
+      });
+    }) as typeof fetch;
+
+    const result = getAccountBalance('GTESTACCOUNT');
+    const rejection = assert.rejects(result, /timed out/i);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await rejection;
+    assert.equal(aborted, true);
+  });
+
+  test('does not reveal raw Horizon error response bodies', async () => {
+    console.error = () => {};
+    globalThis.fetch = (async () =>
+      createMockResponse('private-backend-diagnostic', false, 503)) as typeof fetch;
+
+    await assert.rejects(getAccountBalance('GTESTACCOUNT'), (error: Error) => {
+      assert.match(error.message, /503/);
+      assert.doesNotMatch(error.message, /private-backend-diagnostic/);
+      return true;
+    });
+  });
+});
 
 describe('Stellar Utilities', () => {
   test('should create a valid Stellar keypair', async () => {

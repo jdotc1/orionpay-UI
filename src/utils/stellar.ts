@@ -13,14 +13,36 @@ const FRIENDBOT_URL = 'https://friendbot.stellar.org';
 const networkPassphrase = Networks.TESTNET;
 
 const fetchJson = async (url: string, init?: RequestInit) => {
-  const response = await fetch(url, init);
+  const controller = new AbortController();
+  let timedOut = false;
+  const abort = () => controller.abort();
+  if (init?.signal?.aborted) abort();
+  else init?.signal?.addEventListener('abort', abort, { once: true });
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 10_000);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Stellar request failed (${response.status}): ${errorText}`);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    if (!response.ok) {
+      // Horizon responses can contain node diagnostics. Do not surface the body.
+      throw new Error(`Stellar request failed (${response.status})`);
+    }
+    return await response.json();
+  } catch (error) {
+    if (timedOut) throw new Error('Stellar request timed out after 10 seconds');
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Stellar request cancelled');
+    }
+    if (error instanceof Error && /^Stellar request failed \(\d+\)$/.test(error.message)) {
+      throw error;
+    }
+    throw new Error('Stellar network request failed');
+  } finally {
+    clearTimeout(timeoutId);
+    init?.signal?.removeEventListener('abort', abort);
   }
-
-  return response.json();
 };
 
 // Create a new Stellar keypair
