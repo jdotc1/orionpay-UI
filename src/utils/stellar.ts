@@ -49,6 +49,9 @@ export const getAccountBalance = async (publicKey: string) => {
 
 // Fund testnet account (only works on testnet)
 export const fundTestnetAccount = async (publicKey: string) => {
+  if (process.env.NEXT_PUBLIC_STELLAR_NETWORK !== 'testnet') {
+    throw new Error('Friendbot requires NEXT_PUBLIC_STELLAR_NETWORK=testnet');
+  }
   try {
     return await fetchJson(`${FRIENDBOT_URL}?addr=${publicKey}`);
   } catch (error) {

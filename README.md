@@ -103,7 +103,7 @@ Our Stellar implementation includes:
 - Transaction history retrieval
 - Secure key management
 
-All Stellar operations connect to the Stellar testnet for safe development and demonstration. Visit our [Stellar documentation](https://developers.stellar.org/) to learn more about the Stellar network.
+All Stellar operations currently connect to the Stellar testnet for safe development and demonstration. To explicitly enable automatic account funding through Friendbot, set `NEXT_PUBLIC_STELLAR_NETWORK=testnet` in your deployment environment (or `.env.local` for development) and rebuild the Next.js app. Without that exact value, Friendbot is disabled and new accounts must be funded with XLM manually. This setting protects the funding action; it does not switch the hardcoded Horizon endpoint or transaction network. Visit our [Stellar documentation](https://developers.stellar.org/) to learn more about the Stellar network.
 
 ---
 

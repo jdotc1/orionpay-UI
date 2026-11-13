@@ -18,6 +18,7 @@ import Card from '@/src/components/ui/Card';
 import { useAccountPolling } from '@/src/hooks/useAccountPolling';
 
 export default function StellarWallet() {
+  const friendbotEnabled = process.env.NEXT_PUBLIC_STELLAR_NETWORK === 'testnet';
   const [publicKey, setPublicKey] = useState<string>('');
   const [secretKey, setSecretKey] = useState<string>('');
   const [balances, setBalances] = useState<any[]>([]);
@@ -47,9 +48,13 @@ export default function StellarWallet() {
       setSecretKey(account.secretKey);
       toast.success('New Stellar account created!');
       
-      // Fund testnet account
-      await fundTestnetAccount(account.publicKey);
-      toast.success('Testnet XLM added to your account!');
+      // Friendbot must never run unless the deployment explicitly opts into testnet.
+      if (friendbotEnabled) {
+        await fundTestnetAccount(account.publicKey);
+        toast.success('Testnet XLM added to your account!');
+      } else {
+        toast('Fund your new account with XLM to activate it.');
+      }
       
       // Load balances. A refresh failure surfaces its own toast, so it must not
       // turn a successful account creation into a "Failed to create account".
@@ -176,6 +181,12 @@ export default function StellarWallet() {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-6">
+          {!friendbotEnabled && (
+            <p className="md:col-span-2 text-sm text-gray-600 dark:text-gray-300">
+              Friendbot auto-funding is disabled. Fund this account with XLM through your own
+              faucet or wallet before using it.
+            </p>
+          )}
           {/* Account Info */}
           <div className="space-y-4">
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4">

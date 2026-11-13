@@ -1,7 +1,7 @@
 import { test, describe, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert';
 import { Account, Asset, Keypair, Networks, Operation, TransactionBuilder } from '@stellar/stellar-sdk';
-import { BASE_FEE_STROOPS, createStellarAccount, getSuggestedFee, sendXLM, submitTransaction } from '@/src/utils/stellar';
+import { BASE_FEE_STROOPS, createStellarAccount, fundTestnetAccount, getSuggestedFee, sendXLM, submitTransaction } from '@/src/utils/stellar';
 
 interface CapturedRequest {
   url: string;
@@ -27,6 +27,39 @@ function createMockResponse(body: unknown, ok = true, status = 200): Response {
     formData: async () => new FormData(),
   } as Response;
 }
+
+describe('Friendbot network safeguard', () => {
+  const originalFetch = globalThis.fetch;
+  const originalNetwork = process.env.NEXT_PUBLIC_STELLAR_NETWORK;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    if (originalNetwork === undefined) delete process.env.NEXT_PUBLIC_STELLAR_NETWORK;
+    else process.env.NEXT_PUBLIC_STELLAR_NETWORK = originalNetwork;
+  });
+
+  test('refuses Friendbot requests unless explicitly configured for testnet', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => { calls += 1; return createMockResponse({}); }) as typeof fetch;
+    for (const network of ['mainnet', 'public', '']) {
+      process.env.NEXT_PUBLIC_STELLAR_NETWORK = network;
+      await assert.rejects(fundTestnetAccount('GTESTACCOUNT'), /testnet/i);
+    }
+    assert.equal(calls, 0);
+  });
+
+  test('allows Friendbot only when testnet is selected', async () => {
+    let requestedUrl = '';
+    process.env.NEXT_PUBLIC_STELLAR_NETWORK = 'testnet';
+    globalThis.fetch = (async (url: RequestInfo | URL) => {
+      requestedUrl = String(url);
+      return createMockResponse({ funded: true });
+    }) as typeof fetch;
+
+    await fundTestnetAccount('GTESTACCOUNT');
+    assert.match(requestedUrl, /^https:\/\/friendbot\.stellar\.org\?/);
+  });
+});
 
 describe('Stellar Utilities', () => {
   test('should create a valid Stellar keypair', async () => {
