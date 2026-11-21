@@ -250,6 +250,32 @@ describe('sendXLM', () => {
 
   const submittedFee = () => submissionRequest().fee;
 
+  test('rejects malformed destination public keys without contacting Horizon', async () => {
+    mockHorizon();
+    for (const destination of ['', 'not-a-stellar-account', sender.secretKey, Keypair.random().publicKey().slice(0, 55)]) {
+      await assert.rejects(
+        sendXLM(sender.secretKey, destination, '1', { horizonUrl }),
+        /Invalid Stellar destination public key/
+      );
+    }
+    assert.strictEqual(requests.length, 0);
+  });
+
+  test('rejects noncanonical, zero, over-precision or out-of-range XLM amounts before network access', async () => {
+    mockHorizon();
+    const destination = Keypair.random().publicKey();
+    for (const amount of ['', '0', '0.0000000', '-1', '1e2', '+1', 'NaN', ' 1', '01', '1.', '1.12345678', '0.00000001', '922337203685.4775808', '922337203686']) {
+      await assert.rejects(sendXLM(sender.secretKey, destination, amount, { horizonUrl }), /XLM amount/);
+    }
+    assert.strictEqual(requests.length, 0);
+  });
+
+  test('allows a valid one-stroop payment amount', async () => {
+    mockHorizon();
+    await sendXLM(sender.secretKey, Keypair.random().publicKey(), '0.0000001', { horizonUrl });
+    assert.ok(requests.some((request) => request.url.endsWith('/transactions')));
+  });
+
   test('builds the transaction with the fee from /fee_stats', async () => {
     mockHorizon({ min_fee: { base_fee: '100' }, fee_charged: { p90: '4200' } });
 
