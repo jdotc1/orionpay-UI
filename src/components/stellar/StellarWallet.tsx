@@ -44,6 +44,7 @@ export default function StellarWallet() {
     try {
       const account = await createStellarAccount();
       setPublicKey(account.publicKey);
+      // Keep the signing key in component state only; never include it in logs or toasts.
       setSecretKey(account.secretKey);
       toast.success('New Stellar account created!');
       
@@ -86,7 +87,7 @@ export default function StellarWallet() {
       if (requestId !== requestIdRef.current) {
         return;
       }
-      console.error('Error loading account data:', error);
+      console.error('[stellar] account refresh failed');
       const message = 'Failed to refresh balances';
       setRefreshError(message);
       // Only toast once per outage; the same failure repeats on every poll.
