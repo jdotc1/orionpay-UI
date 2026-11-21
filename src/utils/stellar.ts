@@ -23,6 +23,8 @@ const fetchJson = async (url: string, init?: RequestInit) => {
   return response.json();
 };
 
+// Never log or transmit the returned secretKey except when explicitly signing a transaction.
+// Raw transport errors may contain sensitive data and must not be sent to telemetry.
 // Create a new Stellar keypair
 export const createStellarAccount = async () => {
   const keypair = Keypair.random();
@@ -42,7 +44,7 @@ export const getAccountBalance = async (publicKey: string) => {
     }));
     return balances;
   } catch (error) {
-    console.error('Error loading account:', error);
+    console.error('[stellar] account lookup failed');
     throw error;
   }
 };
@@ -52,7 +54,7 @@ export const fundTestnetAccount = async (publicKey: string) => {
   try {
     return await fetchJson(`${FRIENDBOT_URL}?addr=${publicKey}`);
   } catch (error) {
-    console.error('Error funding account:', error);
+    console.error('[stellar] testnet account funding failed');
     throw error;
   }
 };
@@ -80,7 +82,7 @@ export const getSuggestedFee = async (horizonUrl: string = HORIZON_URL): Promise
 
     return String(fee);
   } catch (error) {
-    console.warn('Failed to fetch fee stats, falling back to base fee:', error);
+    console.warn('[stellar] fee stats unavailable; using base fee');
     return BASE_FEE_STROOPS;
   }
 };
@@ -168,7 +170,7 @@ export const sendXLM = async (
 
     return result;
   } catch (error) {
-    console.error('Error sending payment:', error);
+    console.error('[stellar] transaction submission failed');
     throw error;
   }
 };
@@ -279,7 +281,7 @@ export const getTransactionHistory = async (
     const records: StellarPaymentRecord[] = payments._embedded?.records ?? [];
     return records.map(mapPaymentToHistoryEntry);
   } catch (error) {
-    console.error('Error fetching transaction history:', error);
+    console.error('[stellar] transaction history lookup failed');
     throw error;
   }
 };
