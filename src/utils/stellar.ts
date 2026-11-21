@@ -4,6 +4,7 @@ import {
   Keypair,
   Networks,
   Operation,
+  StrKey,
   Transaction,
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
@@ -140,6 +141,19 @@ export const sendXLM = async (
   options: SendXLMOptions = {}
 ) => {
   const horizonUrl = options.horizonUrl ?? HORIZON_URL;
+
+  // Validate payment inputs before network access or transaction signing.
+  if (!StrKey.isValidEd25519PublicKey(destinationPublicKey)) {
+    throw new Error('Invalid Stellar destination public key');
+  }
+  if (!/^(?:0|[1-9]\\d*)(?:\\.\\d{1,7})?$/.test(amount)) {
+    throw new Error('XLM amount must be a positive decimal with no more than 7 fractional digits');
+  }
+  const [whole, fractional = ''] = amount.split('.');
+  const stroops = BigInt(whole) * BigInt(10_000_000) + BigInt(fractional.padEnd(7, '0') || '0');
+  if (stroops === BigInt(0) || stroops > BigInt('9223372036854775807')) {
+    throw new Error('XLM amount is outside the supported range');
+  }
 
   try {
     const sourceKeypair = Keypair.fromSecret(senderSecret);
