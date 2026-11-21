@@ -1,7 +1,7 @@
 import { test, describe, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert';
 import { Account, Asset, Keypair, Networks, Operation, TransactionBuilder } from '@stellar/stellar-sdk';
-import { BASE_FEE_STROOPS, createStellarAccount, getSuggestedFee, sendXLM, submitTransaction } from '@/src/utils/stellar';
+import { BASE_FEE_STROOPS, createStellarAccount, fundTestnetAccount, getAccountBalance, getSuggestedFee, getTransactionHistory, sendXLM, submitTransaction } from '@/src/utils/stellar';
 
 interface CapturedRequest {
   url: string;
@@ -45,6 +45,36 @@ describe('Stellar Utilities', () => {
 
     assert.notStrictEqual(account1.publicKey, account2.publicKey);
     assert.notStrictEqual(account1.secretKey, account2.secretKey);
+  });
+});
+
+describe('non-disclosing Stellar diagnostics', () => {
+  const originalFetch = globalThis.fetch;
+  const originalError = console.error;
+  const originalWarn = console.warn;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    console.error = originalError;
+    console.warn = originalWarn;
+  });
+
+  test('does not log raw transport errors containing account secrets', async () => {
+    const sender = await createStellarAccount();
+    const logs: string[] = [];
+    console.error = (...args: unknown[]) => { logs.push(args.join(' ')); };
+    console.warn = (...args: unknown[]) => { logs.push(args.join(' ')); };
+    globalThis.fetch = (async () => { throw new Error('network failed for ' + sender.secretKey); }) as typeof fetch;
+
+    await assert.rejects(getAccountBalance(sender.publicKey), /network failed/);
+    await assert.rejects(fundTestnetAccount(sender.publicKey), /network failed/);
+    await assert.rejects(getTransactionHistory(sender.publicKey), /network failed/);
+    await assert.rejects(sendXLM(sender.secretKey, Keypair.random().publicKey(), '1'), /network failed/);
+    assert.strictEqual(await getSuggestedFee(), BASE_FEE_STROOPS);
+
+    assert.ok(logs.length >= 5, 'expected structured failure diagnostics');
+    assert.ok(logs.every((line) => !line.includes(sender.secretKey)), 'logging must never disclose a signing key');
+    assert.ok(logs.every((line) => line.startsWith('[stellar]')), 'use predictable redacted messages');
   });
 });
 
