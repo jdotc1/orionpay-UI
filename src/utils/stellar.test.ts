@@ -1,7 +1,7 @@
 import { test, describe, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert';
 import { Account, Asset, Keypair, Networks, Operation, TransactionBuilder } from '@stellar/stellar-sdk';
-import { BASE_FEE_STROOPS, createStellarAccount, getSuggestedFee, sendXLM, submitTransaction } from '@/src/utils/stellar';
+import { BASE_FEE_STROOPS, createStellarAccount, fetchJson, getSuggestedFee, sendXLM, submitTransaction } from '@/src/utils/stellar';
 
 interface CapturedRequest {
   url: string;
@@ -45,6 +45,44 @@ describe('Stellar Utilities', () => {
 
     assert.notStrictEqual(account1.publicKey, account2.publicKey);
     assert.notStrictEqual(account1.secretKey, account2.secretKey);
+  });
+});
+
+describe('fetchJson security boundaries', () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = originalFetch; });
+
+  test('does not include untrusted response bodies in thrown errors', async () => {
+    const privateMessage = 'SECRET-DO-NOT-LOG-123';
+    globalThis.fetch = (async () => createMockResponse({ detail: privateMessage }, false, 502)) as typeof fetch;
+    await assert.rejects(fetchJson('https://horizon.test/accounts/abc'), (error: unknown) => {
+      assert.match(String(error), /HTTP 502/);
+      assert.ok(!String(error).includes(privateMessage));
+      return true;
+    });
+  });
+
+  test('aborts a hung request and rejects with a stable timeout error', async () => {
+    let aborted = false;
+    globalThis.fetch = ((_: unknown, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          aborted = true;
+          reject(new DOMException('aborted', 'AbortError'));
+        }, { once: true });
+      })) as typeof fetch;
+    await assert.rejects(fetchJson('https://horizon.test/fee_stats', undefined, 5), /Stellar request timed out/);
+    assert.ok(aborted);
+  });
+
+  test('respects an already-aborted caller signal rather than reporting a timeout', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+      assert.strictEqual(init?.signal?.aborted, true);
+      throw new DOMException('aborted by caller', 'AbortError');
+    }) as typeof fetch;
+    await assert.rejects(fetchJson('https://horizon.test/fee_stats', { signal: controller.signal }), /aborted by caller/);
   });
 });
 
