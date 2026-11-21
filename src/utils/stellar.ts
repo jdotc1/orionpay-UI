@@ -12,15 +12,32 @@ export const HORIZON_URL = 'https://horizon-testnet.stellar.org';
 const FRIENDBOT_URL = 'https://friendbot.stellar.org';
 const networkPassphrase = Networks.TESTNET;
 
-const fetchJson = async (url: string, init?: RequestInit) => {
-  const response = await fetch(url, init);
+// Bound all Horizon/Friendbot calls, preserve caller cancellation, and avoid
+// copying untrusted response bodies (which can contain sensitive data) into logs.
+export const fetchJson = async (url: string, init?: RequestInit, timeoutMs = 10_000) => {
+  const controller = new AbortController();
+  const callerSignal = init?.signal;
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Stellar request failed (${response.status}): ${errorText}`);
+  if (callerSignal?.aborted) abortFromCaller();
+  else callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
+
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`Stellar request failed (HTTP ${response.status})`);
+    }
+    return await response.json();
+  } catch (error) {
+    if (controller.signal.aborted && !callerSignal?.aborted) {
+      throw new Error('Stellar request timed out');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    callerSignal?.removeEventListener('abort', abortFromCaller);
   }
-
-  return response.json();
 };
 
 // Create a new Stellar keypair
