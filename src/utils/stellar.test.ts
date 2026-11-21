@@ -65,7 +65,7 @@ describe('fetchJson security boundaries', () => {
   test('aborts a hung request and rejects with a stable timeout error', async () => {
     let aborted = false;
     globalThis.fetch = ((_: unknown, init?: RequestInit) =>
-      new Promise((_resolve, reject) => {
+      new Promise<Response>((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => {
           aborted = true;
           reject(new DOMException('aborted', 'AbortError'));
