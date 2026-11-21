@@ -146,7 +146,7 @@ export const sendXLM = async (
   if (!StrKey.isValidEd25519PublicKey(destinationPublicKey)) {
     throw new Error('Invalid Stellar destination public key');
   }
-  if (!/^(?:0|[1-9]\\d*)(?:\\.\\d{1,7})?$/.test(amount)) {
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,7})?$/.test(amount)) {
     throw new Error('XLM amount must be a positive decimal with no more than 7 fractional digits');
   }
   const [whole, fractional = ''] = amount.split('.');
